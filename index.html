@@ -269,6 +269,7 @@
 
     .main-content {
       flex-grow: 1;
+      min-height: 0;
       display: flex;
       justify-content: center;
       align-items: center;
@@ -311,7 +312,7 @@
     }
 
     .thumb-caption {
-      font-size: 36px;
+      font-size: clamp(22px, 2.65vw, 36px);
       line-height: 1.4;
       color: #202122;
       padding: 20px 8px 8px 8px;
@@ -364,14 +365,14 @@
     }
 
     .help-icon {
-      width: 100px;
-      height: 100px;
+      width: clamp(64px, 7.32vw, 100px);
+      height: clamp(64px, 7.32vw, 100px);
       flex-shrink: 0;
     }
 
     .tip-text {
       font-family: "Times New Roman", Times, serif;
-      font-size: clamp(22px, 2.4vw, 30px);
+      font-size: clamp(18px, 2.2vw, 30px);
       line-height: 1.25;
       color: #333333;
       opacity: 0;
@@ -385,31 +386,73 @@
     .loading-status {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-right: 8%;
-      width: 580px;
+      gap: clamp(6px, 0.9vw, 12px);
+      width: clamp(220px, 36vw, 580px);
+      margin-right: 0;
       flex-shrink: 0;
     }
 
     .globe-icon {
-      width: 100px;
-      height: 100px;
+      width: clamp(64px, 7.32vw, 100px);
+      height: clamp(64px, 7.32vw, 100px);
       flex-shrink: 0;
     }
 
     .globe-slot {
       display: block;
-      width: 100px;
-      height: 100px;
+      width: clamp(64px, 7.32vw, 100px);
+      height: clamp(64px, 7.32vw, 100px);
       flex-shrink: 0;
     }
 
     .loading-text {
       font-family: "Times New Roman", Times, serif;
-      font-size: 84px;
+      font-size: clamp(36px, 5.6vw, 84px);
       color: #4a6b82;
       letter-spacing: 0.5px;
       white-space: pre;
+    }
+
+    @media (max-width: 900px) {
+      .footer-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+        padding: 10px 20px;
+      }
+
+      .tip-container {
+        max-width: none;
+      }
+
+      .loading-status {
+        align-self: center;
+      }
+    }
+
+    @media (max-height: 800px) {
+      .thumb-card img {
+        max-height: 45vh;
+      }
+
+      .footer-bar {
+        padding-top: 8px;
+        padding-bottom: 8px;
+      }
+    }
+
+    @media (max-height: 500px) {
+      .thumb-card img {
+        max-height: 18vh;
+      }
+
+      .thumb-caption {
+        padding: 8px 8px 4px;
+      }
+
+      .article-description {
+        max-height: 2em;
+      }
     }
   </style>
 </head>
