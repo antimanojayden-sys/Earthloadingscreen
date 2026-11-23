@@ -619,6 +619,9 @@
     const tipDisplayDuration = 11000;
     const cardFadeDuration = 1000;
     const wikipediaFastSpeedMultiplier = 10;
+    const popularArticleChance = 0.15;
+    const objectConceptWeight = 1.5;
+    const peoplePlaceWeight = 1;
 
     const tips = Array.isArray(window.earthTips) ? window.earthTips : [];
 
@@ -663,6 +666,7 @@
 
     const seenPageIds = new Set();
     const wikidataPersonById = new Map();
+    const wikidataCategoryById = new Map();
     let popularArticles = null;
     let wikidataWarningLogged = false;
     let fastWikipediaMode = false;
@@ -974,7 +978,7 @@
       const itemIds = [...new Set(articles
         .map(page => page.pageprops && page.pageprops.wikibase_item)
         .filter(itemId => typeof itemId === "string"))];
-      const uncachedItemIds = itemIds.filter(itemId => !wikidataPersonById.has(itemId));
+      const uncachedItemIds = itemIds.filter(itemId => !wikidataCategoryById.has(itemId));
 
       try {
         for (let index = 0; index < uncachedItemIds.length; index += 50) {
@@ -999,11 +1003,14 @@
           for (const itemId of itemIdBatch) {
             const entity = data.entities && data.entities[itemId];
             const instanceClaims = entity && entity.claims && entity.claims.P31;
+            const claims = entity && entity.claims ? entity.claims : {};
             const isPerson = Array.isArray(instanceClaims) && instanceClaims.some(claim => {
               const value = claim.mainsnak && claim.mainsnak.datavalue && claim.mainsnak.datavalue.value;
               return claim.rank !== "deprecated" && value && value.id === "Q5";
             });
+            const isPlace = Array.isArray(claims.P625) || Array.isArray(claims.P17) || Array.isArray(claims.P131);
             wikidataPersonById.set(itemId, isPerson);
+            wikidataCategoryById.set(itemId, isPerson ? "people" : isPlace ? "places" : "objectsConcepts");
           }
         }
       } catch (error) {
@@ -1011,33 +1018,49 @@
           console.warn("Could not classify Wikipedia articles with Wikidata; choosing uniformly instead.", error);
           wikidataWarningLogged = true;
         }
-        return articles.map(page => ({ ...page, isPerson: null }));
+        return articles.map(page => ({ ...page, isPerson: null, category: null }));
       }
 
       return articles.map(page => {
         const itemId = page.pageprops && page.pageprops.wikibase_item;
         return {
           ...page,
-          isPerson: itemId && wikidataPersonById.has(itemId)
-            ? wikidataPersonById.get(itemId)
-            : false
+          isPerson: itemId && wikidataCategoryById.has(itemId)
+            ? wikidataCategoryById.get(itemId) === "people"
+            : false,
+          category: itemId && wikidataCategoryById.has(itemId)
+            ? wikidataCategoryById.get(itemId)
+            : "objectsConcepts"
         };
       });
     }
 
     function chooseArticle(articles) {
-      if (articles.some(article => article.isPerson === null)) {
+      if (articles.some(article => article.category === null)) {
         return articles[Math.floor(Math.random() * articles.length)];
       }
 
-      const people = articles.filter(article => article.isPerson);
-      const nonPeople = articles.filter(article => !article.isPerson);
-      if (people.length === 0 || nonPeople.length === 0) {
+      const categories = [
+        { name: "people", weight: peoplePlaceWeight, articles: articles.filter(article => article.category === "people") },
+        { name: "places", weight: peoplePlaceWeight, articles: articles.filter(article => article.category === "places") },
+        { name: "objectsConcepts", weight: objectConceptWeight, articles: articles.filter(article => article.category === "objectsConcepts") }
+      ].filter(category => category.articles.length > 0);
+
+      if (categories.length === 0) {
         return articles[Math.floor(Math.random() * articles.length)];
       }
 
-      const group = Math.random() < 1 / 11 ? people : nonPeople;
-      return group[Math.floor(Math.random() * group.length)];
+      const totalWeight = categories.reduce((total, category) => total + category.weight, 0);
+      let roll = Math.random() * totalWeight;
+      for (const category of categories) {
+        roll -= category.weight;
+        if (roll < 0) {
+          return category.articles[Math.floor(Math.random() * category.articles.length)];
+        }
+      }
+
+      const lastCategory = categories[categories.length - 1];
+      return lastCategory.articles[Math.floor(Math.random() * lastCategory.articles.length)];
     }
 
     function waitForCardFadeOut() {
@@ -1069,7 +1092,7 @@
         if (fadeOutPromise) await fadeOutPromise;
         if (!experienceStarted || generation !== experienceGeneration) return;
 
-        let usePopularArticle = Math.random() < 0.15;
+        let usePopularArticle = Math.random() < popularArticleChance;
         let choices = [];
         if (usePopularArticle) {
           try {
