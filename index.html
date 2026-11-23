@@ -49,7 +49,7 @@
     .xp-song-info {
       position: absolute;
       left: 50%;
-      max-width: calc(100% - 210px);
+      max-width: calc(100% - 240px);
       overflow: hidden;
       color: #ffffff;
       font-family: Tahoma, Arial, sans-serif;
@@ -117,6 +117,10 @@
 
     .xp-btn-blue:active {
       filter: brightness(0.9);
+    }
+
+    .xp-btn-speed[aria-pressed="true"] {
+      background: linear-gradient(180deg, #7be4ff 0%, #35a8ee 50%, #1473c9 100%);
     }
 
     .xp-btn-close {
@@ -358,7 +362,7 @@
       background-color: #f8f9fa;
       border: 2px solid #c8ccd1;
       padding: 16px;
-      width: 1100px;
+      width: 1400px;
       max-width: calc(100vw - 60px);
       opacity: 0;
       transform: scale(0.8075) translateY(6px);
@@ -390,10 +394,6 @@
 
     .article-description {
       display: block;
-      max-height: 2.8em;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding-right: 8px;
       cursor: auto;
     }
 
@@ -518,10 +518,6 @@
       .thumb-caption {
         padding: 8px 8px 4px;
       }
-
-      .article-description {
-        max-height: 2em;
-      }
     }
   </style>
 </head>
@@ -534,6 +530,7 @@
     </button>
     <div class="xp-song-info" id="songInfo" aria-live="polite">Song info appears when music starts</div>
     <div class="xp-controls">
+      <button class="xp-btn xp-btn-blue xp-btn-speed" id="speedBtn" type="button" title="Speed up Wikipedia articles 10×" aria-label="Toggle 10× Wikipedia article speed" aria-pressed="false">🐌</button>
       <button class="xp-btn xp-btn-blue" id="muteBtn" title="Mute / Unmute">🔊</button>
       <button class="xp-btn xp-btn-blue" id="skipBtn" title="Skip to next song" aria-label="Skip to next song">⏭</button>
       <button class="xp-btn xp-btn-blue" id="fullscreenBtn" title="Toggle Fullscreen">❐</button>
@@ -591,10 +588,13 @@
 
   <script src="Tips - Sheet1.js"></script>
   <script>
-    const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=pageimages%7Cextracts&piprop=thumbnail&pithumbsize=1200&exintro=1&explaintext=1&exsentences=1&format=json&origin=*";
-    const wikipediaStartDelay = 5000;
+    const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=pageimages%7Cextracts%7Cpageprops&piprop=thumbnail&pithumbsize=1200&exintro=1&explaintext=1&exsentences=1&ppprop=wikibase_item&format=json&origin=*";
+    const wikipediaPageviewsApiUrl = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access";
+    const wikidataApiUrl = "https://www.wikidata.org/w/api.php";
+    const wikipediaStartDelay = 3000;
     const wikipediaDisplayDuration = 4000;
     const cardFadeDuration = 1000;
+    const wikipediaFastSpeedMultiplier = 10;
 
     const tips = Array.isArray(window.earthTips) ? window.earthTips : [];
 
@@ -616,6 +616,7 @@
     const tipText = document.getElementById("tipText");
     const loadingText = document.getElementById("loadingText");
     const soundtrack = document.getElementById("soundtrack");
+    const speedBtn = document.getElementById("speedBtn");
     const homeBtn = document.getElementById("homeBtn");
     const muteBtn = document.getElementById("muteBtn");
     const skipBtn = document.getElementById("skipBtn");
@@ -635,7 +636,11 @@
     const mainContent = document.getElementById("mainContent");
     const footerBar = document.getElementById("footerBar");
 
-    let previousPageId = null;
+    const seenPageIds = new Set();
+    const wikidataPersonById = new Map();
+    let popularArticles = null;
+    let wikidataWarningLogged = false;
+    let fastWikipediaMode = false;
     let loadingCard = false;
     let currentTrack = null;
     let tipIndex = 0;
@@ -653,6 +658,27 @@
     soundtrack.addEventListener("play", () => {
       if (currentTrack) {
         songInfo.textContent = "Song playing - " + currentTrack.title + " by " + currentTrack.artist;
+      }
+    });
+
+    function getWikipediaSpeedDuration(duration) {
+      return duration / (fastWikipediaMode ? wikipediaFastSpeedMultiplier : 1);
+    }
+
+    speedBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      fastWikipediaMode = !fastWikipediaMode;
+      const transitionDuration = getWikipediaSpeedDuration(cardFadeDuration) + "ms";
+      thumbCard.style.transitionDuration = transitionDuration + ", " + transitionDuration;
+      speedBtn.setAttribute("aria-pressed", String(fastWikipediaMode));
+      speedBtn.textContent = fastWikipediaMode ? "🐇" : "🐌";
+      speedBtn.title = fastWikipediaMode
+        ? "Return to normal Wikipedia speed"
+        : "Speed up Wikipedia articles 10×";
+
+      if (experienceStarted && wikipediaReady && !loadingCard) {
+        clearTimeout(cardTimeoutId);
+        cardTimeoutId = setTimeout(cycleCard, getWikipediaSpeedDuration(wikipediaDisplayDuration));
       }
     });
 
@@ -823,13 +849,161 @@
       charIndex = 0;
       loadingCard = false;
       startBtn.disabled = false;
-      previousPageId = null;
+      seenPageIds.clear();
 
       globeIcon.replaceWith(globeSlot);
       globeIcon.classList.remove("globe-icon");
       globeIcon.classList.add("menu-globe");
       globeIcon.style.cssText = "";
       menuScreen.after(globeIcon);
+    }
+
+    async function loadPopularArticles() {
+      if (popularArticles) return popularArticles;
+
+      const date = new Date();
+      date.setUTCDate(date.getUTCDate() - 1);
+      const year = date.getUTCFullYear();
+      const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(date.getUTCDate()).padStart(2, "0");
+      const pageviewsResponse = await fetch(
+        wikipediaPageviewsApiUrl + "/" + year + "/" + month + "/" + day
+      );
+      if (!pageviewsResponse.ok) {
+        throw new Error("Wikipedia pageviews request failed: " + pageviewsResponse.status);
+      }
+
+      const pageviewsData = await pageviewsResponse.json();
+      const rankedArticles = pageviewsData.items && pageviewsData.items[0] &&
+        Array.isArray(pageviewsData.items[0].articles)
+        ? pageviewsData.items[0].articles
+        : [];
+      const titles = rankedArticles.slice(0, 100)
+        .map(article => article.article)
+        .filter(title => typeof title === "string" && title.length > 0);
+
+      if (titles.length === 0) {
+        throw new Error("Wikipedia pageviews did not return any article titles.");
+      }
+
+      const articles = [];
+      for (let index = 0; index < titles.length; index += 50) {
+        const parameters = new URLSearchParams({
+          action: "query",
+          titles: titles.slice(index, index + 50).join("|"),
+          prop: "pageimages|extracts|pageprops",
+          piprop: "thumbnail",
+          pithumbsize: "1200",
+          exintro: "1",
+          explaintext: "1",
+          exsentences: "1",
+          ppprop: "wikibase_item",
+          format: "json",
+          origin: "*"
+        });
+        const response = await fetch("https://en.wikipedia.org/w/api.php?" + parameters);
+        if (!response.ok) {
+          throw new Error("Wikipedia article lookup failed: " + response.status);
+        }
+
+        const data = await response.json();
+        const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
+        articles.push(...pages.filter(page =>
+          page.ns === 0 && page.thumbnail && page.thumbnail.source && page.extract
+        ));
+      }
+
+      if (articles.length === 0) {
+        throw new Error("No top-viewed Wikipedia articles had both an image and a description.");
+      }
+
+      popularArticles = await classifyArticles(articles);
+      return popularArticles;
+    }
+
+    async function classifyArticles(articles) {
+      const itemIds = [...new Set(articles
+        .map(page => page.pageprops && page.pageprops.wikibase_item)
+        .filter(itemId => typeof itemId === "string"))];
+      const uncachedItemIds = itemIds.filter(itemId => !wikidataPersonById.has(itemId));
+
+      try {
+        for (let index = 0; index < uncachedItemIds.length; index += 50) {
+          const itemIdBatch = uncachedItemIds.slice(index, index + 50);
+          const parameters = new URLSearchParams({
+            action: "wbgetentities",
+            ids: itemIdBatch.join("|"),
+            props: "claims",
+            format: "json",
+            origin: "*"
+          });
+          const response = await fetch(wikidataApiUrl + "?" + parameters);
+          if (!response.ok) {
+            throw new Error("Wikidata request failed: " + response.status);
+          }
+
+          const data = await response.json();
+          if (data.error) {
+            throw new Error("Wikidata request failed: " + data.error.info);
+          }
+
+          for (const itemId of itemIdBatch) {
+            const entity = data.entities && data.entities[itemId];
+            const instanceClaims = entity && entity.claims && entity.claims.P31;
+            const isPerson = Array.isArray(instanceClaims) && instanceClaims.some(claim => {
+              const value = claim.mainsnak && claim.mainsnak.datavalue && claim.mainsnak.datavalue.value;
+              return claim.rank !== "deprecated" && value && value.id === "Q5";
+            });
+            wikidataPersonById.set(itemId, isPerson);
+          }
+        }
+      } catch (error) {
+        if (!wikidataWarningLogged) {
+          console.warn("Could not classify Wikipedia articles with Wikidata; choosing uniformly instead.", error);
+          wikidataWarningLogged = true;
+        }
+        return articles.map(page => ({ ...page, isPerson: null }));
+      }
+
+      return articles.map(page => {
+        const itemId = page.pageprops && page.pageprops.wikibase_item;
+        return {
+          ...page,
+          isPerson: itemId && wikidataPersonById.has(itemId)
+            ? wikidataPersonById.get(itemId)
+            : false
+        };
+      });
+    }
+
+    function chooseArticle(articles) {
+      if (articles.some(article => article.isPerson === null)) {
+        return articles[Math.floor(Math.random() * articles.length)];
+      }
+
+      const people = articles.filter(article => article.isPerson);
+      const nonPeople = articles.filter(article => !article.isPerson);
+      if (people.length === 0 || nonPeople.length === 0) {
+        return articles[Math.floor(Math.random() * articles.length)];
+      }
+
+      const group = Math.random() < 1 / 11 ? people : nonPeople;
+      return group[Math.floor(Math.random() * group.length)];
+    }
+
+    function waitForCardFadeOut() {
+      return new Promise(resolve => {
+        let timeoutId;
+        const finish = (event) => {
+          if (event && (event.target !== thumbCard || event.propertyName !== "opacity")) return;
+          clearTimeout(timeoutId);
+          thumbCard.removeEventListener("transitionend", finish);
+          resolve();
+        };
+
+        thumbCard.addEventListener("transitionend", finish);
+        timeoutId = setTimeout(finish, cardFadeDuration + 100);
+      });
     }
 
     async function cycleCard() {
@@ -839,32 +1013,50 @@
       loadingCard = true;
       const generation = experienceGeneration;
       const fadeOut = thumbCard.classList.contains("visible");
+      const fadeOutPromise = fadeOut ? waitForCardFadeOut() : null;
       thumbCard.classList.remove("visible");
 
       try {
-        if (fadeOut) {
-          await new Promise(resolve => setTimeout(resolve, cardFadeDuration));
-        }
+        if (fadeOutPromise) await fadeOutPromise;
         if (!experienceStarted || generation !== experienceGeneration) return;
 
-        const response = await fetch(wikipediaApiUrl);
-        if (!response.ok) {
-          throw new Error("Wikipedia request failed: " + response.status);
+        let usePopularArticle = Math.random() < 0.15;
+        let choices = [];
+        if (usePopularArticle) {
+          try {
+            choices = (await loadPopularArticles()).filter(page => !seenPageIds.has(page.pageid));
+          } catch (error) {
+            console.warn("Could not load top-viewed Wikipedia articles; using random articles instead.", error);
+          }
         }
 
-        const data = await response.json();
-        if (!experienceStarted || generation !== experienceGeneration) return;
-        const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
-        const choices = pages.filter(page =>
-          page.thumbnail && page.thumbnail.source && page.extract && page.pageid !== previousPageId
-        );
+        if (choices.length === 0) {
+          usePopularArticle = false;
+          const response = await fetch(wikipediaApiUrl);
+          if (!response.ok) {
+            throw new Error("Wikipedia request failed: " + response.status);
+          }
+
+          const data = await response.json();
+          if (!experienceStarted || generation !== experienceGeneration) return;
+          const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
+          const unseenPages = pages.filter(page =>
+            page.thumbnail && page.thumbnail.source && page.extract && !seenPageIds.has(page.pageid)
+          );
+          choices = await classifyArticles(unseenPages);
+        }
 
         if (choices.length === 0) {
           throw new Error("Wikipedia did not return an article with both a photo and a description.");
         }
 
-        const current = choices[Math.floor(Math.random() * choices.length)];
-        previousPageId = current.pageid;
+        const current = chooseArticle(choices);
+        const nextImage = new Image();
+        nextImage.src = current.thumbnail.source;
+        await nextImage.decode();
+        if (!experienceStarted || generation !== experienceGeneration) return;
+
+        seenPageIds.add(current.pageid);
         cardImage.src = current.thumbnail.source;
         cardImage.alt = "Photo from the Wikipedia article " + current.title;
         cardCaption.replaceChildren();
@@ -890,7 +1082,7 @@
         if (generation === experienceGeneration) {
           loadingCard = false;
           if (experienceStarted && wikipediaReady) {
-            cardTimeoutId = setTimeout(cycleCard, wikipediaDisplayDuration);
+            cardTimeoutId = setTimeout(cycleCard, getWikipediaSpeedDuration(wikipediaDisplayDuration));
           }
         }
       }
