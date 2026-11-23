@@ -176,14 +176,25 @@
       text-shadow: 1px 2px 4px rgba(0, 0, 0, 0.18);
     }
 
+    #menuHome {
+      gap: 2px;
+    }
+
     #menuHome .menu-title {
-      margin-bottom: 0;
+      margin-bottom: -20px;
       font-family: "Arial Black", Arial, sans-serif;
       font-size: clamp(64px, 9vw, 112px);
       font-style: italic;
       font-weight: 900;
       letter-spacing: -0.06em;
       text-shadow: none;
+    }
+
+    .menu-version {
+      color: #555555;
+      font-family: Tahoma, Arial, sans-serif;
+      font-size: 12px;
+      letter-spacing: 0.04em;
     }
 
     #menuHome > .menu-button {
@@ -543,6 +554,7 @@
   <section class="menu-screen" id="menuScreen" aria-label="Main menu">
     <div class="menu-content" id="menuHome">
       <h1 class="menu-title">Earth</h1>
+      <p class="menu-version" id="menuVersion"></p>
       <button class="menu-button" id="startBtn" type="button">Start</button>
       <button class="menu-button" id="creditsBtn" type="button">Credits</button>
     </div>
@@ -625,6 +637,7 @@
     const songInfo = document.getElementById("songInfo");
     const menuScreen = document.getElementById("menuScreen");
     const menuHome = document.getElementById("menuHome");
+    const menuVersion = document.getElementById("menuVersion");
     const creditsView = document.getElementById("creditsView");
     const startBtn = document.getElementById("startBtn");
     const copyPageLinkBtn = document.getElementById("copyPageLinkBtn");
@@ -660,6 +673,30 @@
         songInfo.textContent = "Song playing - " + currentTrack.title + " by " + currentTrack.artist;
       }
     });
+
+    function formatVersion(date) {
+      const year = date.getFullYear();
+      const millennium = Math.floor(year / 1000);
+      const yearInMillennium = year % 1000;
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      const hour = String(date.getHours()).padStart(2, "0");
+      const minute = String(date.getMinutes()).padStart(2, "0");
+      return "v " + millennium + "." + yearInMillennium + "." + month + "." + day + "." + hour + "." + minute;
+    }
+
+    function updateVersionDisplay() {
+      menuVersion.textContent = formatVersion(new Date());
+    }
+
+    function scheduleVersionUpdate() {
+      updateVersionDisplay();
+      const now = new Date();
+      const delayUntilNextMinute = 60000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+      setTimeout(scheduleVersionUpdate, delayUntilNextMinute);
+    }
+
+    scheduleVersionUpdate();
 
     function getWikipediaSpeedDuration(duration) {
       return duration / (fastWikipediaMode ? wikipediaFastSpeedMultiplier : 1);
