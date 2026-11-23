@@ -593,6 +593,7 @@
   <script>
     const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=pageimages%7Cextracts&piprop=thumbnail&pithumbsize=1200&exintro=1&explaintext=1&exsentences=1&format=json&origin=*";
     const wikipediaStartDelay = 5000;
+    const wikipediaDisplayDuration = 4000;
     const cardFadeDuration = 1000;
 
     const tips = Array.isArray(window.earthTips) ? window.earthTips : [];
@@ -644,7 +645,7 @@
     let experienceGeneration = 0;
     let wikipediaReady = false;
     let wikipediaTimeoutId = null;
-    let cardIntervalId = null;
+    let cardTimeoutId = null;
     let tipIntervalId = null;
     let loadingTimeoutId = null;
     let copyStatusTimeoutId = null;
@@ -781,7 +782,6 @@
         if (!experienceStarted) return;
         wikipediaReady = true;
         cycleCard();
-        cardIntervalId = setInterval(cycleCard, 15000);
       }, delayUntilWikipedia);
       tipIntervalId = setInterval(cycleTip, 6000);
     }
@@ -803,11 +803,11 @@
       experienceGeneration++;
       wikipediaReady = false;
       clearTimeout(wikipediaTimeoutId);
-      clearInterval(cardIntervalId);
+      clearTimeout(cardTimeoutId);
       clearInterval(tipIntervalId);
       clearTimeout(loadingTimeoutId);
       wikipediaTimeoutId = null;
-      cardIntervalId = null;
+      cardTimeoutId = null;
       tipIntervalId = null;
       loadingTimeoutId = null;
 
@@ -834,6 +834,8 @@
 
     async function cycleCard() {
       if (!experienceStarted || loadingCard) return;
+      clearTimeout(cardTimeoutId);
+      cardTimeoutId = null;
       loadingCard = true;
       const generation = experienceGeneration;
       const fadeOut = thumbCard.classList.contains("visible");
@@ -885,7 +887,12 @@
         cardCaption.textContent = "Wikipedia could not load an article just now. It will try again shortly.";
         thumbCard.classList.add("visible");
       } finally {
-        if (generation === experienceGeneration) loadingCard = false;
+        if (generation === experienceGeneration) {
+          loadingCard = false;
+          if (experienceStarted && wikipediaReady) {
+            cardTimeoutId = setTimeout(cycleCard, wikipediaDisplayDuration);
+          }
+        }
       }
     }
 
