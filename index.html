@@ -616,6 +616,7 @@
     const wikidataApiUrl = "https://www.wikidata.org/w/api.php";
     const wikipediaStartDelay = 3000;
     const wikipediaDisplayDuration = 4000;
+    const tipDisplayDuration = 11000;
     const cardFadeDuration = 1000;
     const wikipediaFastSpeedMultiplier = 10;
 
@@ -721,8 +722,8 @@
       speedBtn.setAttribute("aria-pressed", String(fastWikipediaMode));
       speedBtn.textContent = fastWikipediaMode ? "🐇" : "🐌";
       speedBtn.title = fastWikipediaMode
-        ? "Return to normal Wikipedia speed"
-        : "Speed up Wikipedia articles 10×";
+        ? "Return to normal speed"
+        : "Speed up 10×";
 
       if (experienceStarted && wikipediaReady && !loadingCard) {
         clearTimeout(cardTimeoutId);
@@ -857,7 +858,7 @@
         wikipediaReady = true;
         cycleCard();
       }, delayUntilWikipedia);
-      tipIntervalId = setInterval(cycleTip, 6000);
+      tipIntervalId = setInterval(cycleTip, tipDisplayDuration);
     }
 
     function returnToMenu() {
