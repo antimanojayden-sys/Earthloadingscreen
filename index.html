@@ -611,7 +611,7 @@
 
   <script src="Tips - Sheet1.js"></script>
   <script>
-    const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=pageimages%7Cextracts%7Cpageprops&piprop=thumbnail&pithumbsize=1200&exintro=1&explaintext=1&exsentences=1&ppprop=wikibase_item&format=json&origin=*";
+    const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=pageimages%7Cextracts%7Cpageprops%7Ccategories&piprop=thumbnail&pithumbsize=1200&exintro=1&explaintext=1&exsentences=1&ppprop=wikibase_item&cllimit=max&format=json&origin=*";
     const wikipediaPageviewsApiUrl = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access";
     const wikidataApiUrl = "https://www.wikidata.org/w/api.php";
     const wikipediaStartDelay = 3000;
@@ -619,6 +619,7 @@
     const tipDisplayDuration = 11000;
     const cardFadeDuration = 1000;
     const wikipediaFastSpeedMultiplier = 10;
+    const maxRandomArticleBatches = 5;
     const popularArticleChance = 0.15;
     const objectConceptWeight = 8;
     const peoplePlaceWeight = 1;
@@ -703,6 +704,15 @@
 
     function updateVersionDisplay() {
       menuVersion.textContent = formatVersion(new Date());
+    }
+
+    function isInappropriateArticle(page) {
+      const screenedText = [
+        page.title,
+        page.extract,
+        ...(Array.isArray(page.categories) ? page.categories.map(category => category.title) : [])
+      ].filter(value => typeof value === "string").join(" ");
+      return /\b(?:porn(?:ography|ographic|ographical|ographer|ographers)?|erotica|erotic|genital(?:ia|s)?|penis(?:es)?|vagin(?:a|al|as)|vulv(?:a|ar|as)|clitoris|testicl(?:e|es)|scrot(?:um|al)|sex toys?|sexually explicit|sexual intercourse)\b/i.test(screenedText);
     }
 
     function scheduleVersionUpdate() {
@@ -944,13 +954,14 @@
         const parameters = new URLSearchParams({
           action: "query",
           titles: titles.slice(index, index + 50).join("|"),
-          prop: "pageimages|extracts|pageprops",
+          prop: "pageimages|extracts|pageprops|categories",
           piprop: "thumbnail",
           pithumbsize: "1200",
           exintro: "1",
           explaintext: "1",
           exsentences: "1",
           ppprop: "wikibase_item",
+          cllimit: "max",
           format: "json",
           origin: "*"
         });
@@ -962,7 +973,8 @@
         const data = await response.json();
         const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
         articles.push(...pages.filter(page =>
-          page.ns === 0 && page.thumbnail && page.thumbnail.source && page.extract
+          page.ns === 0 && page.thumbnail && page.thumbnail.source && page.extract &&
+          !isInappropriateArticle(page)
         ));
       }
 
@@ -1096,7 +1108,9 @@
         let choices = [];
         if (usePopularArticle) {
           try {
-            choices = (await loadPopularArticles()).filter(page => !seenPageIds.has(page.pageid));
+            choices = (await loadPopularArticles()).filter(page =>
+              !seenPageIds.has(page.pageid) && !isInappropriateArticle(page)
+            );
           } catch (error) {
             console.warn("Could not load top-viewed Wikipedia articles; using random articles instead.", error);
           }
@@ -1104,18 +1118,22 @@
 
         if (choices.length === 0) {
           usePopularArticle = false;
-          const response = await fetch(wikipediaApiUrl);
-          if (!response.ok) {
-            throw new Error("Wikipedia request failed: " + response.status);
-          }
+          const safePages = [];
+          for (let attempt = 0; attempt < maxRandomArticleBatches && safePages.length === 0; attempt += 1) {
+            const response = await fetch(wikipediaApiUrl);
+            if (!response.ok) {
+              throw new Error("Wikipedia request failed: " + response.status);
+            }
 
-          const data = await response.json();
-          if (!experienceStarted || generation !== experienceGeneration) return;
-          const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
-          const unseenPages = pages.filter(page =>
-            page.thumbnail && page.thumbnail.source && page.extract && !seenPageIds.has(page.pageid)
-          );
-          choices = await classifyArticles(unseenPages);
+            const data = await response.json();
+            if (!experienceStarted || generation !== experienceGeneration) return;
+            const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
+            safePages.push(...pages.filter(page =>
+              page.thumbnail && page.thumbnail.source && page.extract &&
+              !seenPageIds.has(page.pageid) && !isInappropriateArticle(page)
+            ));
+          }
+          choices = await classifyArticles(safePages);
         }
 
         if (choices.length === 0) {
