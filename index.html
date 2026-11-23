@@ -64,11 +64,20 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      padding: 0;
+      border: 0;
+      background: transparent;
       color: #ffffff;
       font-family: Tahoma, "Trebuchet MS", sans-serif;
       font-weight: bold;
       font-size: 16px;
       text-shadow: 1px 1px 1px #0f1089;
+      cursor: pointer;
+    }
+
+    .xp-title-left:focus-visible {
+      outline: 2px solid #ffffff;
+      outline-offset: 3px;
     }
 
     .xp-star-icon {
@@ -164,12 +173,20 @@
     }
 
     #menuHome .menu-title {
+      margin-bottom: 0;
       font-family: "Arial Black", Arial, sans-serif;
       font-size: clamp(64px, 9vw, 112px);
       font-style: italic;
       font-weight: 900;
       letter-spacing: -0.06em;
       text-shadow: none;
+    }
+
+    #menuHome > .menu-button {
+      width: 100%;
+      max-width: 100%;
+      min-height: 44px;
+      font-size: 18px;
     }
 
     .menu-button {
@@ -203,6 +220,58 @@
     .menu-button:focus-visible {
       outline: 3px solid #0054e3;
       outline-offset: 3px;
+    }
+
+    .share-copy-button {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 40;
+      display: flex;
+      width: 44px;
+      height: 44px;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #000000;
+      cursor: pointer;
+    }
+
+    .share-copy-button[hidden] {
+      display: none;
+    }
+
+    .share-copy-button:focus-visible {
+      outline: 3px solid #0054e3;
+      outline-offset: 3px;
+    }
+
+    .share-copy-button span {
+      font-family: "Segoe UI Symbol", "Arial Unicode MS", sans-serif;
+      font-size: 32px;
+      font-weight: normal;
+      line-height: 1;
+    }
+
+    .copy-link-status {
+      position: fixed;
+      right: 20px;
+      bottom: 82px;
+      z-index: 40;
+      max-width: min(280px, calc(100vw - 40px));
+      padding: 10px 14px;
+      border: 1px solid #202122;
+      background: #ffffff;
+      color: #202122;
+      font-family: Tahoma, Arial, sans-serif;
+      font-size: 14px;
+      box-shadow: 2px 2px 0 #202122;
+    }
+
+    .copy-link-status[hidden] {
+      display: none;
     }
 
     .credits-name {
@@ -459,10 +528,10 @@
 <body>
 
   <div class="xp-title-bar">
-    <div class="xp-title-left">
+    <button class="xp-title-left" id="homeBtn" type="button" aria-label="Return to main menu">
       <span class="xp-star-icon">🜨</span>
       <span>Earth</span>
-    </div>
+    </button>
     <div class="xp-song-info" id="songInfo" aria-live="polite">Song info appears when music starts</div>
     <div class="xp-controls">
       <button class="xp-btn xp-btn-blue" id="muteBtn" title="Mute / Unmute">🔊</button>
@@ -515,6 +584,11 @@
     </div>
   </div>
 
+  <button class="share-copy-button" id="copyPageLinkBtn" type="button" title="Copy page link" aria-label="Copy page link">
+    <span aria-hidden="true">&#x2332;</span>
+  </button>
+  <div class="copy-link-status" id="copyLinkStatus" role="status" aria-live="polite" hidden></div>
+
   <script src="Tips - Sheet1.js"></script>
   <script>
     const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=pageimages%7Cextracts&piprop=thumbnail&pithumbsize=1200&exintro=1&explaintext=1&exsentences=1&format=json&origin=*";
@@ -541,6 +615,7 @@
     const tipText = document.getElementById("tipText");
     const loadingText = document.getElementById("loadingText");
     const soundtrack = document.getElementById("soundtrack");
+    const homeBtn = document.getElementById("homeBtn");
     const muteBtn = document.getElementById("muteBtn");
     const skipBtn = document.getElementById("skipBtn");
     const fullscreenBtn = document.getElementById("fullscreenBtn");
@@ -550,6 +625,8 @@
     const menuHome = document.getElementById("menuHome");
     const creditsView = document.getElementById("creditsView");
     const startBtn = document.getElementById("startBtn");
+    const copyPageLinkBtn = document.getElementById("copyPageLinkBtn");
+    const copyLinkStatus = document.getElementById("copyLinkStatus");
     const creditsBtn = document.getElementById("creditsBtn");
     const backBtn = document.getElementById("backBtn");
     const globeIcon = document.getElementById("globeIcon");
@@ -563,7 +640,14 @@
     let tipIndex = 0;
     let trackIndex = 0;
     let experienceStarted = false;
+    let startingExperience = false;
+    let experienceGeneration = 0;
     let wikipediaReady = false;
+    let wikipediaTimeoutId = null;
+    let cardIntervalId = null;
+    let tipIntervalId = null;
+    let loadingTimeoutId = null;
+    let copyStatusTimeoutId = null;
 
     soundtrack.addEventListener("play", () => {
       if (currentTrack) {
@@ -609,6 +693,23 @@
       document.body.style.border = "none";
     });
 
+    homeBtn.addEventListener("click", returnToMenu);
+    copyPageLinkBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        copyLinkStatus.textContent = "Link copied!";
+      } catch (error) {
+        console.error("Could not copy page link:", error);
+        copyLinkStatus.textContent = "Could not copy the link. Copy the page address from your browser.";
+      }
+
+      copyLinkStatus.hidden = false;
+      clearTimeout(copyStatusTimeoutId);
+      copyStatusTimeoutId = setTimeout(() => {
+        copyLinkStatus.hidden = true;
+      }, 2500);
+    });
+
     creditsBtn.addEventListener("click", () => {
       menuHome.hidden = true;
       creditsView.hidden = false;
@@ -625,7 +726,11 @@
       if (experienceStarted) return;
       const startTime = performance.now();
       experienceStarted = true;
+      startingExperience = true;
       startBtn.disabled = true;
+      copyPageLinkBtn.hidden = true;
+      copyLinkStatus.hidden = true;
+      clearTimeout(copyStatusTimeoutId);
       playNextTrack();
 
       const start = globeIcon.getBoundingClientRect();
@@ -660,6 +765,7 @@
       menuScreen.hidden = true;
       mainContent.classList.add("visible");
       footerBar.classList.add("visible");
+      startingExperience = false;
 
       if (tips.length > 0) {
         tips.sort(() => Math.random() - 0.5);
@@ -671,17 +777,65 @@
       }
       typeLoading();
       const delayUntilWikipedia = Math.max(0, wikipediaStartDelay - (performance.now() - startTime));
-      setTimeout(() => {
+      wikipediaTimeoutId = setTimeout(() => {
+        if (!experienceStarted) return;
         wikipediaReady = true;
         cycleCard();
-        setInterval(cycleCard, 15000);
+        cardIntervalId = setInterval(cycleCard, 15000);
       }, delayUntilWikipedia);
-      setInterval(cycleTip, 6000);
+      tipIntervalId = setInterval(cycleTip, 6000);
+    }
+
+    function returnToMenu() {
+      if (startingExperience) return;
+
+      menuHome.hidden = false;
+      creditsView.hidden = true;
+      menuScreen.classList.remove("leaving");
+      menuScreen.hidden = false;
+      copyPageLinkBtn.hidden = false;
+      copyLinkStatus.hidden = true;
+      clearTimeout(copyStatusTimeoutId);
+
+      if (!experienceStarted) return;
+
+      experienceStarted = false;
+      experienceGeneration++;
+      wikipediaReady = false;
+      clearTimeout(wikipediaTimeoutId);
+      clearInterval(cardIntervalId);
+      clearInterval(tipIntervalId);
+      clearTimeout(loadingTimeoutId);
+      wikipediaTimeoutId = null;
+      cardIntervalId = null;
+      tipIntervalId = null;
+      loadingTimeoutId = null;
+
+      mainContent.classList.remove("visible");
+      footerBar.classList.remove("visible");
+      thumbCard.classList.remove("visible");
+      cardImage.removeAttribute("src");
+      cardImage.alt = "";
+      cardCaption.replaceChildren();
+      tipText.classList.remove("visible");
+      tipText.textContent = "";
+      loadingText.textContent = "";
+      charIndex = 0;
+      loadingCard = false;
+      startBtn.disabled = false;
+      previousPageId = null;
+
+      globeIcon.replaceWith(globeSlot);
+      globeIcon.classList.remove("globe-icon");
+      globeIcon.classList.add("menu-globe");
+      globeIcon.style.cssText = "";
+      menuScreen.after(globeIcon);
     }
 
     async function cycleCard() {
-      if (loadingCard) return;
+      if (!experienceStarted || loadingCard) return;
       loadingCard = true;
+      const generation = experienceGeneration;
       const fadeOut = thumbCard.classList.contains("visible");
       thumbCard.classList.remove("visible");
 
@@ -689,6 +843,7 @@
         if (fadeOut) {
           await new Promise(resolve => setTimeout(resolve, cardFadeDuration));
         }
+        if (!experienceStarted || generation !== experienceGeneration) return;
 
         const response = await fetch(wikipediaApiUrl);
         if (!response.ok) {
@@ -696,6 +851,7 @@
         }
 
         const data = await response.json();
+        if (!experienceStarted || generation !== experienceGeneration) return;
         const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
         const choices = pages.filter(page =>
           page.thumbnail && page.thumbnail.source && page.extract && page.pageid !== previousPageId
@@ -722,13 +878,14 @@
         cardCaption.append(articleLink, articleDescription);
         thumbCard.classList.add("visible");
       } catch (error) {
+        if (!experienceStarted || generation !== experienceGeneration) return;
         console.error("Could not load a Wikipedia article:", error);
         cardImage.removeAttribute("src");
         cardImage.alt = "";
         cardCaption.textContent = "Wikipedia could not load an article just now. It will try again shortly.";
         thumbCard.classList.add("visible");
       } finally {
-        loadingCard = false;
+        if (generation === experienceGeneration) loadingCard = false;
       }
     }
 
@@ -754,12 +911,13 @@
     let charIndex = 0;
 
     function typeLoading() {
+      if (!experienceStarted) return;
       if (charIndex <= fullLoadingString.length) {
         loadingText.textContent = fullLoadingString.slice(0, charIndex);
         charIndex++;
-        setTimeout(typeLoading, 90);
+        loadingTimeoutId = setTimeout(typeLoading, 90);
       } else {
-        setTimeout(() => {
+        loadingTimeoutId = setTimeout(() => {
           charIndex = 0;
           typeLoading();
         }, 1200);
