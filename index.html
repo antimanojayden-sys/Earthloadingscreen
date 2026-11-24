@@ -381,9 +381,6 @@
     }
 
     .thumb-card {
-      background-color: #f8f9fa;
-      border: 2px solid #c8ccd1;
-      padding: 16px;
       width: 1400px;
       max-width: calc(100vw - 60px);
       opacity: 0;
@@ -392,12 +389,36 @@
       cursor: pointer;
     }
 
+    .thumb-card-box {
+      background-color: #f8f9fa;
+      border: 2px solid #c8ccd1;
+      padding: 16px;
+      width: 100%;
+    }
+
+    .thumb-card-box:fullscreen {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      width: 100vw;
+      height: 100vh;
+      overflow: auto;
+      padding: 24px;
+      background-color: #f8f9fa;
+    }
+
+    .thumb-card-box:fullscreen img {
+      height: 70vh;
+      max-height: 70vh;
+      border: 0;
+    }
+
     .thumb-card.visible {
       opacity: 1;
       transform: scale(0.8075) translateY(0);
     }
 
-    .thumb-card img {
+    .thumb-card-box img {
       width: 100%;
       height: 640px;
       max-height: 60vh;
@@ -407,16 +428,71 @@
     }
 
     .thumb-caption {
+      position: relative;
       font-size: clamp(22px, 2.65vw, 36px);
       line-height: 1.4;
       color: #202122;
-      padding: 20px 8px 8px 8px;
+      padding: 20px 42px 8px 8px;
       text-align: left;
+    }
+
+    .image-fullscreen-button {
+      position: absolute;
+      top: 20px;
+      right: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 30px;
+      padding: 2px;
+      border: 0;
+      border-radius: 2px;
+      background: transparent;
+      color: #202122;
+      cursor: pointer;
+    }
+
+    .image-fullscreen-button:hover {
+      background: transparent;
+    }
+
+    .image-fullscreen-button:focus-visible {
+      outline: 2px solid #0645ad;
+      outline-offset: 1px;
+    }
+
+    .image-fullscreen-button svg {
+      display: block;
+      width: 30px;
+      height: 22px;
+      fill: none;
+      stroke: #888;
+      stroke-width: 1;
     }
 
     .article-description {
       display: block;
       cursor: auto;
+    }
+
+    .thumb-card-attribution {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 8px;
+      padding: 2px 18px 0;
+      color: #777777;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .thumb-card-attribution:empty {
+      display: none;
+    }
+
+    .thumb-card-attribution a {
+      color: inherit;
     }
 
     .thumb-caption a {
@@ -522,7 +598,7 @@
     }
 
     @media (max-height: 800px) {
-      .thumb-card img {
+      .thumb-card-box img {
         max-height: 45vh;
       }
 
@@ -533,7 +609,7 @@
     }
 
     @media (max-height: 500px) {
-      .thumb-card img {
+      .thumb-card-box img {
         max-height: 18vh;
       }
 
@@ -578,6 +654,7 @@
           <p>Wikipedia articles and excerpts: <a href="https://en.wikipedia.org/" target="_blank" rel="noopener noreferrer">Wikipedia contributors</a>.</p>
           <p>Article text is licensed under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener noreferrer">CC BY-SA 4.0</a>, unless otherwise noted.</p>
           <p>Image licenses may differ; see each linked article for image attribution.</p>
+          <p>Wiki Poetics captions and images: <a href="https://cha.ski/wiki-poetics-watch" target="_blank" rel="noopener noreferrer">Wiki Poetics Watch</a>. See each linked Wikimedia Commons file for image attribution and license.</p>
         </div>
         <button class="menu-button" id="backBtn" type="button">Back</button>
       </section>
@@ -587,8 +664,11 @@
 
   <div class="main-content" id="mainContent">
     <div class="thumb-card" id="thumbCard">
-      <img id="cardImage" src="" alt="">
-      <div class="thumb-caption" id="cardCaption"></div>
+      <div class="thumb-card-box">
+        <img id="cardImage" src="" alt="">
+        <div class="thumb-caption" id="cardCaption"></div>
+      </div>
+      <div class="thumb-card-attribution" id="cardAttribution" role="note" aria-label="Image attribution"></div>
     </div>
   </div>
 
@@ -611,15 +691,20 @@
 
   <script src="Tips - Sheet1.js"></script>
   <script>
-    const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=pageimages%7Cextracts%7Cpageprops%7Ccategories&piprop=thumbnail&pithumbsize=1200&exintro=1&explaintext=1&exsentences=1&ppprop=wikibase_item&cllimit=max&format=json&origin=*";
+    const wikipediaApiUrl = "https://en.wikipedia.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=10&prop=extracts%7Cpageprops%7Ccategories&exintro=1&explaintext=1&exsentences=1&ppprop=wikibase_item&cllimit=max&format=json&origin=*";
     const wikipediaPageviewsApiUrl = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access";
     const wikidataApiUrl = "https://www.wikidata.org/w/api.php";
+    const commonsApiUrl = "https://commons.wikimedia.org/w/api.php";
+    const wikiPoeticsCsvUrl = "https://cha.ski/data/wiki-poetics-commons-enrichment.csv";
     const wikipediaStartDelay = 3000;
     const wikipediaDisplayDuration = 4000;
     const tipDisplayDuration = 11000;
     const cardFadeDuration = 1000;
     const wikipediaFastSpeedMultiplier = 10;
     const maxRandomArticleBatches = 5;
+    const maxBodyImageArticleAttempts = 3;
+    const maxPoeticsImageAttempts = 3;
+    const wikiPoeticsChance = 0.9;
     const popularArticleChance = 0.15;
     const objectConceptWeight = 8;
     const peoplePlaceWeight = 1;
@@ -639,8 +724,10 @@
     ];
 
     const thumbCard = document.getElementById("thumbCard");
+    const thumbCardBox = thumbCard.querySelector(".thumb-card-box");
     const cardImage = document.getElementById("cardImage");
     const cardCaption = document.getElementById("cardCaption");
+    const cardAttribution = document.getElementById("cardAttribution");
     const tipText = document.getElementById("tipText");
     const loadingText = document.getElementById("loadingText");
     const soundtrack = document.getElementById("soundtrack");
@@ -666,10 +753,16 @@
     const footerBar = document.getElementById("footerBar");
 
     const seenPageIds = new Set();
+    const seenPoeticsIds = new Set();
+    const articleBodyImagesByPageId = new Map();
+    const commonsImageUrlByFile = new Map();
     const wikidataPersonById = new Map();
     const wikidataCategoryById = new Map();
     let popularArticles = null;
+    let wikiPoeticsEntries = null;
+    let wikiPoeticsLoadPromise = null;
     let wikidataWarningLogged = false;
+    let wikiPoeticsWarningLogged = false;
     let fastWikipediaMode = false;
     let loadingCard = false;
     let currentTrack = null;
@@ -713,6 +806,207 @@
         ...(Array.isArray(page.categories) ? page.categories.map(category => category.title) : [])
       ].filter(value => typeof value === "string").join(" ");
       return /\b(?:porn(?:ography|ographic|ographical|ographer|ographers)?|erotica|erotic|genital(?:ia|s)?|penis(?:es)?|vagin(?:a|al|as)|vulv(?:a|ar|as)|clitoris|testicl(?:e|es)|scrot(?:um|al)|sex toys?|sexually explicit|sexual intercourse)\b/i.test(screenedText);
+    }
+
+    function parseCsvRows(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let inQuotes = false;
+
+      for (let index = 0; index < text.length; index += 1) {
+        const character = text[index];
+        const nextCharacter = text[index + 1];
+        if (inQuotes) {
+          if (character === '"' && nextCharacter === '"') {
+            field += '"';
+            index += 1;
+          } else if (character === '"') {
+            inQuotes = false;
+          } else {
+            field += character;
+          }
+        } else if (character === '"') {
+          inQuotes = true;
+        } else if (character === ",") {
+          row.push(field);
+          field = "";
+        } else if (character === "\n") {
+          row.push(field);
+          if (row.some(value => value.length > 0)) rows.push(row);
+          row = [];
+          field = "";
+        } else if (character !== "\r") {
+          field += character;
+        }
+      }
+
+      row.push(field);
+      if (row.some(value => value.length > 0)) rows.push(row);
+      return rows;
+    }
+
+    function normalizeCommonsPageUrl(value) {
+      try {
+        const url = new URL(value.trim());
+        return url.protocol === "https:" &&
+          url.hostname === "commons.wikimedia.org" &&
+          /^\/wiki\/File:/i.test(url.pathname)
+          ? url.href
+          : "";
+      } catch (error) {
+        return "";
+      }
+    }
+
+    function normalizeWikipediaUrl(value) {
+      try {
+        const url = new URL(value.trim());
+        return url.protocol === "https:" &&
+          (url.hostname === "wikipedia.org" || url.hostname.endsWith(".wikipedia.org")) &&
+          /^\/wiki\//.test(url.pathname)
+          ? url.href
+          : "";
+      } catch (error) {
+        return "";
+      }
+    }
+
+    function getCommonsFileFromUrl(value) {
+      try {
+        const match = new URL(value).pathname.match(/^\/wiki\/File:(.+)$/i);
+        return match ? decodeURIComponent(match[1]).replace(/_/g, " ") : "";
+      } catch (error) {
+        return "";
+      }
+    }
+
+    async function loadWikiPoeticsEntries() {
+      if (wikiPoeticsEntries) return wikiPoeticsEntries;
+      if (wikiPoeticsLoadPromise) return wikiPoeticsLoadPromise;
+
+      wikiPoeticsLoadPromise = (async () => {
+        const response = await fetch(wikiPoeticsCsvUrl);
+        if (!response.ok) {
+          throw new Error("Wiki Poetics data request failed: " + response.status);
+        }
+
+        const rows = parseCsvRows(await response.text());
+        if (rows.length < 2) {
+          throw new Error("Wiki Poetics data did not contain any entries.");
+        }
+
+        const headers = rows[0].map((header, index) =>
+          index === 0 ? header.replace(/^\uFEFF/, "").trim() : header.trim()
+        );
+        const column = name => headers.indexOf(name);
+        const columns = {
+          id: column("block_id"),
+          caption: column("caption"),
+          commonsPageUrl: column("commons_page_url"),
+          correctedCommonsUrl: column("corrected_commons_url"),
+          wikipediaUrl: column("wikipedia_url"),
+          license: column("license_short"),
+          author: column("author"),
+          provenance: column("provenance_status")
+        };
+        if (Object.values(columns).some(index => index < 0)) {
+          throw new Error("Wiki Poetics data is missing required columns.");
+        }
+
+        const entries = [];
+        const lastRequiredColumn = Math.max(...Object.values(columns));
+        for (const row of rows.slice(1)) {
+          if (row.length <= lastRequiredColumn) continue;
+          if (row[columns.provenance].trim().toLowerCase() !== "approved") continue;
+          const caption = row[columns.caption].trim();
+          const commonsPageUrl = normalizeCommonsPageUrl(row[columns.correctedCommonsUrl]) ||
+            normalizeCommonsPageUrl(row[columns.commonsPageUrl]);
+          const commonsFile = getCommonsFileFromUrl(commonsPageUrl);
+          const wikipediaUrl = normalizeWikipediaUrl(row[columns.wikipediaUrl]);
+          if (!row[columns.id] || !caption || !commonsPageUrl || !commonsFile) continue;
+          if (isInappropriateArticle({
+            title: caption,
+            extract: commonsFile + " " + wikipediaUrl
+          })) continue;
+
+          entries.push({
+            id: row[columns.id].trim(),
+            caption,
+            commonsPageUrl,
+            commonsFile,
+            wikipediaUrl,
+            license: row[columns.license].trim(),
+            author: row[columns.author].trim()
+          });
+        }
+
+        if (entries.length === 0) {
+          throw new Error("No approved, suitable Wiki Poetics entries were found.");
+        }
+        return entries;
+      })();
+
+      try {
+        wikiPoeticsEntries = await wikiPoeticsLoadPromise;
+        return wikiPoeticsEntries;
+      } catch (error) {
+        wikiPoeticsLoadPromise = null;
+        throw error;
+      }
+    }
+
+    async function loadCommonsThumbnail(entry) {
+      if (commonsImageUrlByFile.has(entry.commonsFile)) {
+        return commonsImageUrlByFile.get(entry.commonsFile);
+      }
+
+      const parameters = new URLSearchParams({
+        action: "query",
+        titles: "File:" + entry.commonsFile,
+        prop: "imageinfo",
+        iiprop: "url",
+        iiurlwidth: "1200",
+        format: "json",
+        origin: "*"
+      });
+      const response = await fetch(commonsApiUrl + "?" + parameters);
+      if (!response.ok) {
+        throw new Error("Wikimedia Commons image request failed: " + response.status);
+      }
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error("Wikimedia Commons image request failed: " + data.error.info);
+      }
+      const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
+      const imageInfo = pages[0] && Array.isArray(pages[0].imageinfo)
+        ? pages[0].imageinfo[0]
+        : null;
+      if (!imageInfo || !imageInfo.thumburl) {
+        throw new Error("Wikimedia Commons did not return a thumbnail for " + entry.commonsFile);
+      }
+
+      commonsImageUrlByFile.set(entry.commonsFile, imageInfo.thumburl);
+      return imageInfo.thumburl;
+    }
+
+    function getWikipediaArticleLabel(url) {
+      try {
+        const title = new URL(url).pathname.replace(/^\/wiki\//, "").split("#")[0];
+        return decodeURIComponent(title).replace(/_/g, " ") || "Wikipedia article";
+      } catch (error) {
+        return "Wikipedia article";
+      }
+    }
+
+    function getCommonsImageLabel(fileName, fallback) {
+      const label = (fileName || "")
+        .replace(/\.(?:jpe?g|png|gif|webp|svg|tiff?|bmp)$/i, "")
+        .replace(/_/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return label || fallback || "Wiki Poetics image";
     }
 
     function scheduleVersionUpdate() {
@@ -774,6 +1068,20 @@
 
     document.addEventListener("fullscreenchange", () => {
       fullscreenBtn.textContent = document.fullscreenElement ? "❏" : "❐";
+      const cardFullscreenButton = cardCaption.querySelector(".image-fullscreen-button");
+      if (cardFullscreenButton) {
+        const isCardFullscreen = document.fullscreenElement === thumbCardBox;
+        cardFullscreenButton.title = isCardFullscreen ? "Exit card full screen" : "View card full screen";
+        cardFullscreenButton.setAttribute("aria-label", cardFullscreenButton.title);
+        cardFullscreenButton.setAttribute("aria-pressed", String(isCardFullscreen));
+        if (isCardFullscreen) {
+          clearTimeout(cardTimeoutId);
+          cardTimeoutId = null;
+        } else if (!document.fullscreenElement && experienceStarted && wikipediaReady &&
+          !loadingCard && cardTimeoutId === null) {
+          cardTimeoutId = setTimeout(cycleCard, getWikipediaSpeedDuration(wikipediaDisplayDuration));
+        }
+      }
     });
 
     closeBtn.addEventListener("click", () => {
@@ -906,6 +1214,7 @@
       cardImage.removeAttribute("src");
       cardImage.alt = "";
       cardCaption.replaceChildren();
+      cardAttribution.replaceChildren();
       tipText.classList.remove("visible");
       tipText.textContent = "";
       loadingText.textContent = "";
@@ -913,6 +1222,7 @@
       loadingCard = false;
       startBtn.disabled = false;
       seenPageIds.clear();
+      seenPoeticsIds.clear();
 
       globeIcon.replaceWith(globeSlot);
       globeIcon.classList.remove("globe-icon");
@@ -954,9 +1264,7 @@
         const parameters = new URLSearchParams({
           action: "query",
           titles: titles.slice(index, index + 50).join("|"),
-          prop: "pageimages|extracts|pageprops|categories",
-          piprop: "thumbnail",
-          pithumbsize: "1200",
+          prop: "extracts|pageprops|categories",
           exintro: "1",
           explaintext: "1",
           exsentences: "1",
@@ -973,17 +1281,114 @@
         const data = await response.json();
         const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
         articles.push(...pages.filter(page =>
-          page.ns === 0 && page.thumbnail && page.thumbnail.source && page.extract &&
+          page.ns === 0 && page.extract &&
           !isInappropriateArticle(page)
         ));
       }
 
       if (articles.length === 0) {
-        throw new Error("No top-viewed Wikipedia articles had both an image and a description.");
+        throw new Error("No top-viewed Wikipedia articles had a description.");
       }
 
       popularArticles = await classifyArticles(articles);
       return popularArticles;
+    }
+
+    async function loadArticleBodyImages(page) {
+      if (articleBodyImagesByPageId.has(page.pageid)) {
+        return articleBodyImagesByPageId.get(page.pageid);
+      }
+
+      const request = (async () => {
+        const parameters = new URLSearchParams({
+          action: "parse",
+          pageid: String(page.pageid),
+          prop: "text",
+          format: "json",
+          formatversion: "2",
+          origin: "*"
+        });
+        const response = await fetch("https://en.wikipedia.org/w/api.php?" + parameters);
+        if (!response.ok) {
+          throw new Error("Wikipedia article image request failed: " + response.status);
+        }
+
+        const data = await response.json();
+        if (data.error) {
+          throw new Error("Wikipedia article image request failed: " + data.error.info);
+        }
+
+        const parsedPage = data.parse;
+        if (!parsedPage || typeof parsedPage.text !== "string") {
+          throw new Error("Wikipedia did not return parsed article content for " + page.title);
+        }
+
+        const parsedDocument = new DOMParser().parseFromString(parsedPage.text, "text/html");
+        const excludedSelectors = "table.infobox, .infobox, .navbox, .vertical-navbox, .sidebar, .metadata, .toc";
+        const bodyImages = Array.from(parsedDocument.querySelectorAll("figure img, .thumbinner img, .gallerybox img"))
+          .filter(image => {
+            if (image.closest(excludedSelectors)) return false;
+            const width = Number(image.getAttribute("width") || image.getAttribute("data-file-width"));
+            const height = Number(image.getAttribute("height") || image.getAttribute("data-file-height"));
+            if ((width && width < 120) || (height && height < 80)) return false;
+
+            const source = image.getAttribute("src") || image.getAttribute("data-src");
+            if (!source) return false;
+            const sourceUrl = new URL(source, "https://en.wikipedia.org");
+            return sourceUrl.protocol === "https:" &&
+              (sourceUrl.hostname === "wikimedia.org" || sourceUrl.hostname.endsWith(".wikimedia.org"));
+          })
+          .map(image => {
+            const figure = image.closest("figure");
+            const imageContainer = image.closest(".thumbinner") || image.closest(".gallerybox");
+            const caption = (figure && figure.querySelector("figcaption")) ||
+              (imageContainer && imageContainer.querySelector(".thumbcaption, .gallerytext"));
+            let description = "";
+            if (caption) {
+              const captionCopy = caption.cloneNode(true);
+              captionCopy.querySelectorAll(".mw-editsection, .reference, .noprint").forEach(element => element.remove());
+              description = captionCopy.textContent.replace(/\s+/g, " ").trim();
+            }
+
+            const alt = (image.getAttribute("alt") || "").trim();
+            return {
+              imageUrl: new URL(image.getAttribute("src") || image.getAttribute("data-src"), "https://en.wikipedia.org").href,
+              description: description || alt || page.extract
+            };
+          });
+
+        return bodyImages.filter(bodyImage => !isInappropriateArticle({
+          title: page.title,
+          extract: bodyImage.description
+        }));
+      })();
+      articleBodyImagesByPageId.set(page.pageid, request);
+
+      try {
+        return await request;
+      } catch (error) {
+        articleBodyImagesByPageId.delete(page.pageid);
+        throw error;
+      }
+    }
+
+    async function chooseArticleWithBodyImage(articles, maxAttempts = maxBodyImageArticleAttempts) {
+      const remainingArticles = articles.slice();
+      for (let attempt = 0; attempt < maxAttempts && remainingArticles.length > 0; attempt += 1) {
+        const article = chooseArticle(remainingArticles);
+        const bodyImages = await loadArticleBodyImages(article);
+        if (bodyImages.length > 0) {
+          return {
+            article,
+            bodyImage: bodyImages[Math.floor(Math.random() * bodyImages.length)]
+          };
+        }
+
+        const articleIndex = remainingArticles.indexOf(article);
+        remainingArticles.splice(articleIndex, 1);
+      }
+
+      return null;
     }
 
     async function classifyArticles(articles) {
@@ -1075,6 +1480,34 @@
       return lastCategory.articles[Math.floor(Math.random() * lastCategory.articles.length)];
     }
 
+    async function choosePoeticsImage() {
+      const entries = await loadWikiPoeticsEntries();
+      let candidates = entries.filter(entry => !seenPoeticsIds.has(entry.id));
+      if (candidates.length === 0) {
+        seenPoeticsIds.clear();
+        candidates = entries.slice();
+      }
+
+      for (let attempt = 0; attempt < maxPoeticsImageAttempts && candidates.length > 0; attempt += 1) {
+        const index = Math.floor(Math.random() * candidates.length);
+        const entry = candidates.splice(index, 1)[0];
+        seenPoeticsIds.add(entry.id);
+        try {
+          return {
+            entry,
+            imageUrl: await loadCommonsThumbnail(entry)
+          };
+        } catch (error) {
+          if (!wikiPoeticsWarningLogged) {
+            console.warn("Could not load a Wiki Poetics image; trying another entry.", error);
+            wikiPoeticsWarningLogged = true;
+          }
+        }
+      }
+
+      return null;
+    }
+
     function waitForCardFadeOut() {
       return new Promise(resolve => {
         let timeoutId;
@@ -1091,7 +1524,7 @@
     }
 
     async function cycleCard() {
-      if (!experienceStarted || loadingCard) return;
+      if (!experienceStarted || loadingCard || document.fullscreenElement === thumbCardBox) return;
       clearTimeout(cardTimeoutId);
       cardTimeoutId = null;
       loadingCard = true;
@@ -1104,62 +1537,134 @@
         if (fadeOutPromise) await fadeOutPromise;
         if (!experienceStarted || generation !== experienceGeneration) return;
 
-        let usePopularArticle = Math.random() < popularArticleChance;
-        let choices = [];
-        if (usePopularArticle) {
+        let current = null;
+        let currentImageUrl = "";
+        let currentArticleDescription = "";
+        let isPoeticsCard = false;
+        if (Math.random() < wikiPoeticsChance) {
           try {
-            choices = (await loadPopularArticles()).filter(page =>
-              !seenPageIds.has(page.pageid) && !isInappropriateArticle(page)
-            );
-          } catch (error) {
-            console.warn("Could not load top-viewed Wikipedia articles; using random articles instead.", error);
-          }
-        }
-
-        if (choices.length === 0) {
-          usePopularArticle = false;
-          const safePages = [];
-          for (let attempt = 0; attempt < maxRandomArticleBatches && safePages.length === 0; attempt += 1) {
-            const response = await fetch(wikipediaApiUrl);
-            if (!response.ok) {
-              throw new Error("Wikipedia request failed: " + response.status);
+            const poeticsCard = await choosePoeticsImage();
+            if (poeticsCard) {
+              current = poeticsCard.entry;
+              currentImageUrl = poeticsCard.imageUrl;
+              isPoeticsCard = true;
             }
-
-            const data = await response.json();
-            if (!experienceStarted || generation !== experienceGeneration) return;
-            const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
-            safePages.push(...pages.filter(page =>
-              page.thumbnail && page.thumbnail.source && page.extract &&
-              !seenPageIds.has(page.pageid) && !isInappropriateArticle(page)
-            ));
+          } catch (error) {
+            if (!wikiPoeticsWarningLogged) {
+              console.warn("Could not load Wiki Poetics data; using Wikipedia articles instead.", error);
+              wikiPoeticsWarningLogged = true;
+            }
           }
-          choices = await classifyArticles(safePages);
         }
 
-        if (choices.length === 0) {
-          throw new Error("Wikipedia did not return an article with both a photo and a description.");
+        if (!isPoeticsCard) {
+          let selectedArticle = null;
+          const usePopularArticle = Math.random() < popularArticleChance;
+          if (usePopularArticle) {
+            try {
+              const choices = (await loadPopularArticles()).filter(page =>
+                !seenPageIds.has(page.pageid) && !isInappropriateArticle(page)
+              );
+              selectedArticle = await chooseArticleWithBodyImage(choices, 15);
+            } catch (error) {
+              console.warn("Could not load a top-viewed Wikipedia article image; using random articles instead.", error);
+            }
+          }
+
+          if (!selectedArticle) {
+            for (let attempt = 0; attempt < maxRandomArticleBatches && !selectedArticle; attempt += 1) {
+              const response = await fetch(wikipediaApiUrl);
+              if (!response.ok) {
+                throw new Error("Wikipedia request failed: " + response.status);
+              }
+
+              const data = await response.json();
+              if (!experienceStarted || generation !== experienceGeneration) return;
+              const pages = data.query && data.query.pages ? Object.values(data.query.pages) : [];
+              const safePages = pages.filter(page =>
+                page.extract &&
+                !seenPageIds.has(page.pageid) && !isInappropriateArticle(page)
+              );
+              const choices = await classifyArticles(safePages);
+              selectedArticle = await chooseArticleWithBodyImage(choices);
+            }
+          }
+
+          if (!selectedArticle) {
+            throw new Error("Wikipedia did not return an article with a body image and description.");
+          }
+
+          current = selectedArticle.article;
+          currentImageUrl = selectedArticle.bodyImage.imageUrl;
+          currentArticleDescription = selectedArticle.bodyImage.description;
         }
 
-        const current = chooseArticle(choices);
         const nextImage = new Image();
-        nextImage.src = current.thumbnail.source;
+        nextImage.src = currentImageUrl;
         await nextImage.decode();
         if (!experienceStarted || generation !== experienceGeneration) return;
 
-        seenPageIds.add(current.pageid);
-        cardImage.src = current.thumbnail.source;
-        cardImage.alt = "Photo from the Wikipedia article " + current.title;
+        if (!isPoeticsCard) seenPageIds.add(current.pageid);
+        cardImage.src = currentImageUrl;
+        cardImage.alt = isPoeticsCard
+          ? current.caption
+          : currentArticleDescription || "Photo from the Wikipedia article " + current.title;
         cardCaption.replaceChildren();
+        cardAttribution.replaceChildren();
 
         const articleLink = document.createElement("a");
-        articleLink.href = "https://en.wikipedia.org/?curid=" + current.pageid;
+        articleLink.href = isPoeticsCard
+          ? current.wikipediaUrl || current.commonsPageUrl
+          : "https://en.wikipedia.org/?curid=" + current.pageid;
         articleLink.target = "_blank";
         articleLink.rel = "noopener noreferrer";
-        articleLink.textContent = current.title;
-        const articleDescription = document.createElement("span");
-        articleDescription.className = "article-description";
-        articleDescription.textContent = current.extract;
-        cardCaption.append(articleLink, articleDescription);
+        articleLink.textContent = isPoeticsCard
+          ? current.wikipediaUrl
+            ? getWikipediaArticleLabel(current.wikipediaUrl)
+            : getCommonsImageLabel(current.commonsFile, current.caption)
+          : current.title;
+
+        const cardFullscreenButton = document.createElement("button");
+        cardFullscreenButton.className = "image-fullscreen-button";
+        cardFullscreenButton.type = "button";
+        cardFullscreenButton.title = "View card full screen";
+        cardFullscreenButton.setAttribute("aria-label", cardFullscreenButton.title);
+        cardFullscreenButton.setAttribute("aria-pressed", "false");
+        cardFullscreenButton.innerHTML = '<svg viewBox="0 0 15 11" aria-hidden="true"><path d="m2.8,6V.8h11v7H6.8"/><path d="m.8,6v4h6v-4z"/></svg>';
+        cardFullscreenButton.addEventListener("click", async event => {
+          event.stopPropagation();
+          try {
+            if (document.fullscreenElement === thumbCardBox) {
+              await document.exitFullscreen();
+            } else {
+              await thumbCardBox.requestFullscreen();
+            }
+          } catch (error) {
+            console.error("Could not toggle the card full screen:", error);
+          }
+        });
+
+        if (isPoeticsCard) {
+          const articleDescription = document.createElement("span");
+          articleDescription.className = "article-description";
+          articleDescription.textContent = current.caption;
+          const attribution = document.createElement("span");
+          attribution.className = "thumb-card-attribution-text";
+          attribution.textContent = current.author ? "Image by " + current.author : "";
+          const commonsLink = document.createElement("a");
+          commonsLink.href = current.commonsPageUrl;
+          commonsLink.target = "_blank";
+          commonsLink.rel = "noopener noreferrer";
+          commonsLink.textContent = "Wikimedia Commons source";
+          cardCaption.append(articleLink, cardFullscreenButton, articleDescription);
+          if (current.author) cardAttribution.append(attribution);
+          cardAttribution.append(commonsLink);
+        } else {
+          const articleDescription = document.createElement("span");
+          articleDescription.className = "article-description";
+          articleDescription.textContent = currentArticleDescription;
+          cardCaption.append(articleLink, cardFullscreenButton, articleDescription);
+        }
         thumbCard.classList.add("visible");
       } catch (error) {
         if (!experienceStarted || generation !== experienceGeneration) return;
@@ -1167,6 +1672,7 @@
         cardImage.removeAttribute("src");
         cardImage.alt = "";
         cardCaption.textContent = "Wikipedia could not load an article just now. It will try again shortly.";
+        cardAttribution.replaceChildren();
         thumbCard.classList.add("visible");
       } finally {
         if (generation === experienceGeneration) {
@@ -1180,7 +1686,10 @@
 
     thumbCard.addEventListener("click", (event) => {
       if (!wikipediaReady || !(event.target instanceof Element)) return;
-      if (event.target.closest("a") || event.target.closest(".article-description")) return;
+      if (document.fullscreenElement === thumbCardBox) return;
+      if (event.target.closest("a") || event.target.closest("button") ||
+        event.target.closest(".article-description") ||
+        event.target.closest(".thumb-card-attribution")) return;
       cycleCard();
     });
 
