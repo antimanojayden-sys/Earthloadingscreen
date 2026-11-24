@@ -495,6 +495,10 @@
       color: inherit;
     }
 
+    .thumb-card-attribution-marker {
+      font-size: 0.75em;
+    }
+
     .thumb-caption a {
       color: #0645ad;
       text-decoration: none;
@@ -1656,6 +1660,11 @@
           commonsLink.target = "_blank";
           commonsLink.rel = "noopener noreferrer";
           commonsLink.textContent = "Wikimedia Commons source";
+          const commonsMarker = document.createElement("span");
+          commonsMarker.className = "thumb-card-attribution-marker";
+          commonsMarker.setAttribute("aria-hidden", "true");
+          commonsMarker.textContent = "*";
+          commonsLink.append(commonsMarker);
           cardCaption.append(articleLink, cardFullscreenButton, articleDescription);
           if (current.author) cardAttribution.append(attribution);
           cardAttribution.append(commonsLink);
