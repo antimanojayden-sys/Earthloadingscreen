@@ -699,7 +699,8 @@
     const wikipediaPageviewsApiUrl = "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access";
     const wikidataApiUrl = "https://www.wikidata.org/w/api.php";
     const commonsApiUrl = "https://commons.wikimedia.org/w/api.php";
-    const wikiPoeticsCsvUrl = "https://cha.ski/data/wiki-poetics-commons-enrichment.csv";
+    const wikiPoeticsCsvUrl = "wiki-poetics-display.csv";
+    const wikiPoeticsCompressedCsvUrl = "wiki-poetics-display.csv.gz";
     const wikipediaStartDelay = 3000;
     const wikipediaDisplayDuration = 4000;
     const tipDisplayDuration = 11000;
@@ -709,6 +710,14 @@
     const maxBodyImageArticleAttempts = 3;
     const maxPoeticsImageAttempts = 3;
     const wikiPoeticsChance = 0.9;
+    const initialPoeticsEntry = {
+      id: "30986185",
+      caption: "A manila folder affixed with a paper clip",
+      commonsPageUrl: "https://commons.wikimedia.org/wiki/File:Manila_folder.jpg",
+      commonsFile: "Manila_folder.jpg",
+      wikipediaUrl: "https://en.wikipedia.org/wiki/Manila_paper",
+      author: "allispossible.org.uk"
+    };
     const popularArticleChance = 0.15;
     const objectConceptWeight = 8;
     const peoplePlaceWeight = 1;
@@ -774,6 +783,7 @@
     let trackIndex = 0;
     let experienceStarted = false;
     let startingExperience = false;
+    let initialPoeticsImagePending = true;
     let experienceGeneration = 0;
     let wikipediaReady = false;
     let wikipediaTimeoutId = null;
@@ -890,12 +900,18 @@
       if (wikiPoeticsLoadPromise) return wikiPoeticsLoadPromise;
 
       wikiPoeticsLoadPromise = (async () => {
-        const response = await fetch(wikiPoeticsCsvUrl);
+        const supportsGzipDecompression = typeof DecompressionStream === "function";
+        const response = await fetch(
+          supportsGzipDecompression ? wikiPoeticsCompressedCsvUrl : wikiPoeticsCsvUrl
+        );
         if (!response.ok) {
           throw new Error("Wiki Poetics data request failed: " + response.status);
         }
 
-        const rows = parseCsvRows(await response.text());
+        const csvText = supportsGzipDecompression
+          ? await new Response(response.body.pipeThrough(new DecompressionStream("gzip"))).text()
+          : await response.text();
+        const rows = parseCsvRows(csvText);
         if (rows.length < 2) {
           throw new Error("Wiki Poetics data did not contain any entries.");
         }
@@ -1133,6 +1149,12 @@
       copyPageLinkBtn.hidden = true;
       copyLinkStatus.hidden = true;
       clearTimeout(copyStatusTimeoutId);
+      loadWikiPoeticsEntries().catch(error => {
+        if (!wikiPoeticsWarningLogged) {
+          console.warn("Could not preload Wiki Poetics data; later cards will retry.", error);
+          wikiPoeticsWarningLogged = true;
+        }
+      });
       playNextTrack();
 
       const start = globeIcon.getBoundingClientRect();
@@ -1224,6 +1246,7 @@
       loadingText.textContent = "";
       charIndex = 0;
       loadingCard = false;
+      initialPoeticsImagePending = true;
       startBtn.disabled = false;
       seenPageIds.clear();
       seenPoeticsIds.clear();
@@ -1484,10 +1507,12 @@
       return lastCategory.articles[Math.floor(Math.random() * lastCategory.articles.length)];
     }
 
-    async function choosePoeticsImage() {
+    async function choosePoeticsImage(preferredEntryId = "") {
       const entries = await loadWikiPoeticsEntries();
-      let candidates = entries.filter(entry => !seenPoeticsIds.has(entry.id));
-      if (candidates.length === 0) {
+      let candidates = preferredEntryId
+        ? entries.filter(entry => entry.id === preferredEntryId)
+        : entries.filter(entry => !seenPoeticsIds.has(entry.id));
+      if (!preferredEntryId && candidates.length === 0) {
         seenPoeticsIds.clear();
         candidates = entries.slice();
       }
@@ -1536,6 +1561,7 @@
       const fadeOut = thumbCard.classList.contains("visible");
       const fadeOutPromise = fadeOut ? waitForCardFadeOut() : null;
       thumbCard.classList.remove("visible");
+      let isInitialPoeticsCard = false;
 
       try {
         if (fadeOutPromise) await fadeOutPromise;
@@ -1545,7 +1571,12 @@
         let currentImageUrl = "";
         let currentArticleDescription = "";
         let isPoeticsCard = false;
-        if (Math.random() < wikiPoeticsChance) {
+        if (initialPoeticsImagePending) {
+          isInitialPoeticsCard = true;
+          current = initialPoeticsEntry;
+          currentImageUrl = await loadCommonsThumbnail(current);
+          isPoeticsCard = true;
+        } else if (Math.random() < wikiPoeticsChance) {
           try {
             const poeticsCard = await choosePoeticsImage();
             if (poeticsCard) {
@@ -1608,6 +1639,10 @@
         await nextImage.decode();
         if (!experienceStarted || generation !== experienceGeneration) return;
 
+        if (isInitialPoeticsCard) {
+          initialPoeticsImagePending = false;
+          seenPoeticsIds.add(current.id);
+        }
         if (!isPoeticsCard) seenPageIds.add(current.pageid);
         cardImage.src = currentImageUrl;
         cardImage.alt = isPoeticsCard
@@ -1677,10 +1712,15 @@
         thumbCard.classList.add("visible");
       } catch (error) {
         if (!experienceStarted || generation !== experienceGeneration) return;
-        console.error("Could not load a Wikipedia article:", error);
+        console.error(
+          isInitialPoeticsCard ? "Could not load the first Wiki Poetics image:" : "Could not load a Wikipedia article:",
+          error
+        );
         cardImage.removeAttribute("src");
         cardImage.alt = "";
-        cardCaption.textContent = "Wikipedia could not load an article just now. It will try again shortly.";
+        cardCaption.textContent = isInitialPoeticsCard
+          ? "The first Wiki Poetics image could not load just now. It will try again shortly."
+          : "Wikipedia could not load an article just now. It will try again shortly.";
         cardAttribution.replaceChildren();
         thumbCard.classList.add("visible");
       } finally {
